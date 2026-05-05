@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# chainsmith-android pre-commit hook.
+#
+# Runs cheapest-and-most-critical first: secrets gate, formatting, lints,
+# unit tests. Instrumented and Compose UI tests run in CI, not on every
+# commit — they need a device or emulator.
+#
+# Bypassing this hook with --no-verify is technically allowed but contrary
+# to .claude/rules/security.md. If a step is failing, fix it; do not skip.
+
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-commit: gitleaks is not installed." >&2
+    echo "  install (Windows): winget install Gitleaks.Gitleaks" >&2
+    echo "  install (other):   https://github.com/gitleaks/gitleaks#installing" >&2
+    exit 1
+fi
+
+echo "pre-commit: scanning staged changes for secrets..."
+gitleaks git --staged --redact --verbose --no-banner
+
+if [[ -x ./gradlew ]]; then
+    echo "pre-commit: running ktlint..."
+    ./gradlew --quiet ktlintCheck
+
+    echo "pre-commit: running detekt..."
+    ./gradlew --quiet detekt
+
+    echo "pre-commit: running unit tests..."
+    ./gradlew --quiet testDebugUnitTest
+else
+    echo "pre-commit: no ./gradlew found yet; skipping ktlint, detekt, unit tests."
+    echo "  these will run automatically once the Gradle project is scaffolded."
+fi
+
+echo "pre-commit: ok"
